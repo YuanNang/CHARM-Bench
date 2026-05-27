@@ -153,9 +153,10 @@ If the submitted answer length does not match the expected length, the environme
 
 Here are the baseline results evaluated on `charm-bench-100.jsonl`:
 
-| Model | Provider | Max Attempts | Score (out of 100) | Note |
-| --- | --- | --- | --- | --- |
-| gemini-3.5-flash | google | 1 | **72** | Baseline test |
+| Model | Provider | Max Attempts | Score (out of 100) |
+| --- | --- | --- | --- |
+| gemini-3.5-flash | google | 1 | 72 |
+| SenseNova-6.7-Flash-Lite | openai | 1 | 33 |
 
 *We welcome contributions to update this table with results from other models!*
 
