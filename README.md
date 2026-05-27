@@ -1,6 +1,6 @@
 # CHARM-Bench
 
-CHinese homophonic Associative Reasoning with Multimodality benchmark.
+**C**Hinese **H**omophonic **A**ssociative **R**easoning with **M**ultimodality Benchmark.
 
 ## Overview
 
@@ -11,6 +11,14 @@ We thank the game creators for the inspiration and the data source.
 - Game store link: https://store.steampowered.com/app/4164310/_/
 - Studio website: https://www.findthelamp.com/
 
+If you need training data or commercial use permission, please contact the studio:
+https://www.findthelamp.com/
+
+## License
+
+- Code: MIT License (see LICENSE)
+- Data: CC BY-NC 4.0 for non-commercial use only (see DATA_LICENSE.md)
+
 ## Benchmark Files
 
 We provide benchmark manifests and image bundles for easy download:
@@ -20,7 +28,6 @@ We provide benchmark manifests and image bundles for easy download:
 Each manifest row contains:
 
 - id: the benchmark ID (0..N-1)
-- source_id: the original game ID
 - answer, ref_word, category, answer_length, pinyin_syllables
 - image_1, image_2: repo-relative image paths
 
@@ -31,6 +38,14 @@ Unzip the images into the data directory so the paths in the manifest resolve co
 ```bash
 # 100-image pack
 unzip data/charm-bench-100.zip -d data/benchmark
+```
+
+## Install
+
+Use uv to install dependencies:
+
+```bash
+uv sync
 ```
 
 ## Run Evaluation
@@ -76,3 +91,9 @@ After an incorrect guess, the environment returns two feedback streams:
 - Pinyin feedback: the same rules applied to tone-less pinyin syllables.
 
 If the submitted answer length does not match the expected length, the environment returns a length_mismatch error and skips character and pinyin feedback for that guess.
+
+## Contributing
+
+The current benchmark is relatively easy; we welcome high-difficulty problems to enrich it. Planned roadmap items include difficulty tiers, category breakdowns, and a public model leaderboard.
+
+If you find this useful, please consider starring the repo and contributing challenging new problems.
