@@ -31,6 +31,15 @@ Each manifest row contains:
 - answer, ref_word, category, answer_length, pinyin_syllables
 - image_1, image_2: repo-relative image paths
 
+## Download Data
+
+The image zip is stored with Git LFS. After cloning, fetch LFS objects:
+
+```bash
+git lfs install
+git lfs pull
+```
+
 ## Unpack Images
 
 Unzip the images into the data directory so the paths in the manifest resolve correctly:
