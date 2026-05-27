@@ -33,7 +33,26 @@ Each manifest row contains:
 
 ## Download Data
 
-The image zip is stored with Git LFS. After cloning, fetch LFS objects:
+You can download the benchmark data (manifest and image bundles) either from Hugging Face or directly from this repository using Git LFS.
+
+### Method 1: From Hugging Face (Recommended)
+
+The dataset is hosted on Hugging Face: [YuanNang/CHARM-Bench](https://www.google.com/search?q=https://huggingface.co/datasets/YuanNang/CHARM-Bench).
+
+The easiest way to download the files directly into your local `data/` directory is using the `huggingface-cli`:
+
+```bash
+# Install the huggingface_hub library if you haven't already
+pip install huggingface_hub
+
+# Download the entire dataset directly into the data folder
+huggingface-cli download YuanNang/CHARM-Bench --local-dir data --repo-type dataset
+
+```
+
+### Method 2: From GitHub (Git LFS)
+
+Alternatively, the image zip is also stored within this GitHub repository using Git LFS. After cloning this repo, fetch the LFS objects:
 
 ```bash
 git lfs install
