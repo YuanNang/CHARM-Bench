@@ -87,7 +87,7 @@ def build_system_prompt() -> str:
         "你是 CHARM benchmark 的答题 agent。任务是根据两张图片、第一张图提示词、"
         "答案类别和字数，推理中文谐音梗答案。你可以先分析图片中的物体、动作、数量、拆分关系和谐音关系。"
         "当你准备尝试答案时，必须调用 submit_answer 工具提交。"
-        "submit_answer 的 answer 只能包含最终答案，不要在 tool call 里写分析过程。"
+        "submit_answer 的 answer 只能包含最终答案"
         "工具会返回正确与否，以及汉字和无声调拼音的绿/黄/灰位置反馈。"
         "如果工具返回错误，请根据历史反馈继续推理并再次调用工具。"
     )
@@ -343,9 +343,40 @@ def _convert_messages_for_google(
         elif isinstance(content, str):
             parts.append(types.Part.from_text(text=content))
 
+        if role == "assistant":
+            tool_calls = message.get("tool_calls") or []
+            for tool_call in tool_calls:
+                function = tool_call.get("function", {})
+                args = function.get("arguments", {})
+                if isinstance(args, str):
+                    try:
+                        args = json.loads(args)
+                    except json.JSONDecodeError:
+                        args = {}
+                parts.append(
+                    types.Part.from_function_call(
+                        name=function.get("name", ""),
+                        args=args,
+                    )
+                )
+
         if role == "tool":
-            tool_text = content if isinstance(content, str) else json.dumps(content, ensure_ascii=False)
-            parts = [types.Part.from_text(text=f"tool_result: {tool_text}")]
+            tool_call_id = message.get("tool_call_id")
+            tool_payload = message.get("content")
+            if isinstance(tool_payload, str):
+                try:
+                    tool_payload = json.loads(tool_payload)
+                except json.JSONDecodeError:
+                    tool_payload = {"text": tool_payload}
+            parts = [
+                types.Part.from_function_response(
+                    name="submit_answer",
+                    response={
+                        "tool_call_id": tool_call_id,
+                        "feedback": tool_payload,
+                    },
+                )
+            ]
             role = "user"
 
         if not parts:
@@ -355,6 +386,60 @@ def _convert_messages_for_google(
 
     system_prompt = "\n".join(system_parts) if system_parts else None
     return system_prompt, converted
+
+
+def _summarize_google_response(response: Any) -> dict[str, Any]:
+    candidates_summary = []
+    for cand in getattr(response, "candidates", []) or []:
+        content = getattr(cand, "content", None)
+        parts = getattr(content, "parts", None) or []
+        function_calls = []
+        for part in parts:
+            function_call = getattr(part, "function_call", None)
+            if function_call:
+                function_calls.append(
+                    {
+                        "name": getattr(function_call, "name", None),
+                        "args": getattr(function_call, "args", None),
+                    }
+                )
+        candidates_summary.append(
+            {
+                "finish_reason": getattr(cand, "finish_reason", None),
+                "safety_ratings": getattr(cand, "safety_ratings", None),
+                "parts_text": [getattr(part, "text", None) for part in parts],
+                "function_calls": function_calls,
+            }
+        )
+    response_function_calls = []
+    for call in getattr(response, "function_calls", []) or []:
+        response_function_calls.append(
+            {
+                "name": getattr(call, "name", None),
+                "args": getattr(call, "args", None),
+            }
+        )
+    return {
+        "text": getattr(response, "text", None),
+        "prompt_feedback": getattr(response, "prompt_feedback", None),
+        "function_calls": response_function_calls,
+        "candidates": candidates_summary,
+    }
+
+
+def _extract_google_text(response: Any) -> str:
+    text = getattr(response, "text", None) or ""
+    if text.strip():
+        return text
+    candidates = getattr(response, "candidates", []) or []
+    for cand in candidates:
+        content = getattr(cand, "content", None)
+        parts = getattr(content, "parts", None) or []
+        collected = [getattr(part, "text", None) for part in parts]
+        joined = "".join([item for item in collected if item])
+        if joined.strip():
+            return joined
+    return ""
 
 
 def _anthropic_messages_url(base_url: str | None) -> str:
@@ -506,10 +591,32 @@ class GoogleGenAIAdapter(ModelAdapter):
         from google.genai import types
 
         system_prompt, contents = _convert_messages_for_google(messages)
-        config = (
-            types.GenerateContentConfig(system_instruction=system_prompt)
-            if system_prompt
-            else None
+        function_declaration = types.FunctionDeclaration(
+            name="submit_answer",
+            description="Submit final answer only.",
+            parameters_json_schema={
+                "type": "object",
+                "properties": {
+                    "answer": {
+                        "type": "string",
+                        "description": "Final Chinese answer.",
+                    }
+                },
+                "required": ["answer"],
+                "additionalProperties": False,
+            },
+        )
+        tools = [types.Tool(function_declarations=[function_declaration])]
+        tool_config = types.ToolConfig(
+            function_calling_config=types.FunctionCallingConfig(
+                mode=types.FunctionCallingConfigMode.ANY,
+                allowed_function_names=["submit_answer"],
+            )
+        )
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt,
+            tools=tools,
+            tool_config=tool_config,
         )
 
         def _call() -> Any:
@@ -520,7 +627,37 @@ class GoogleGenAIAdapter(ModelAdapter):
             )
 
         response = await asyncio.to_thread(_call)
-        text = getattr(response, "text", None) or ""
+        text = _extract_google_text(response)
+        function_calls = getattr(response, "function_calls", None)
+        summary = _summarize_google_response(response)
+        if function_calls:
+            call = function_calls[0]
+            args = getattr(call, "args", {}) or {}
+            answer = str(args.get("answer", "")).strip()
+            if not answer:
+                raise RuntimeError(f"empty google function call args: {summary}")
+            return Generation(
+                answer=answer,
+                message={
+                    "role": "assistant",
+                    "content": text,
+                    "reasoning": None,
+                    "tool_calls": [
+                        {
+                            "id": f"submit_answer_{turn}",
+                            "type": "function",
+                            "function": {
+                                "name": "submit_answer",
+                                "arguments": args,
+                            },
+                        }
+                    ],
+                    "raw_message": summary,
+                },
+            )
+
+        if not text.strip():
+            raise RuntimeError(f"empty google response: {summary}")
         answer = text.strip()
         return Generation(
             answer=answer,
@@ -529,7 +666,7 @@ class GoogleGenAIAdapter(ModelAdapter):
                 "content": text,
                 "reasoning": None,
                 "tool_calls": [guess_tool_call(turn, answer)],
-                "raw_message": {"text": text},
+                "raw_message": summary,
             },
         )
 
