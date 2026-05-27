@@ -66,7 +66,7 @@ uv run charm eval \
   --manifest data/charm-bench-100.jsonl \
   --provider openai \
   --model gpt-4.1 \
-  --max-attempts 3
+  --max-attempts 1
 ``````
 
 Notes:
@@ -85,7 +85,7 @@ CHARM_API_KEY=your_api_key_here
 CHARM_BASE_URL=your_base_url_here
 CHARM_PROVIDER=openai
 CHARM_MANIFEST=data/charm-bench-100.jsonl
-CHARM_MAX_ATTEMPTS=5
+CHARM_MAX_ATTEMPTS=1
 CHARM_CONCURRENCY=2
 CHARM_TIMEOUT=600
 CHARM_MODEL=your_model_name_here
