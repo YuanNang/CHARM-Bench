@@ -592,6 +592,11 @@ class AnthropicAdapter(ModelAdapter):
         self.timeout = float(os.environ.get("CHARM_TIMEOUT", "120"))
         self.max_tokens = int(os.environ.get("CHARM_MAX_TOKENS", "1024"))
         self.anthropic_version = os.environ.get("CHARM_ANTHROPIC_VERSION", "2023-06-01")
+        self.auth_style = (
+            os.environ.get("ANTHROPIC_AUTH_STYLE")
+            or os.environ.get("CHARM_AUTH_STYLE")
+            or "x-api-key"
+        ).lower()
         if not self.api_key:
             raise ValueError("missing API key for provider anthropic")
 
@@ -608,11 +613,17 @@ class AnthropicAdapter(ModelAdapter):
             payload["system"] = system_prompt
 
         url = _anthropic_messages_url(self.base_url)
-        headers = {
-            "x-api-key": self.api_key,
-            "anthropic-version": self.anthropic_version,
-            "content-type": "application/json",
-        }
+        if self.auth_style == "bearer":
+            headers = {
+                "authorization": f"Bearer {self.api_key}",
+                "content-type": "application/json",
+            }
+        else:
+            headers = {
+                "x-api-key": self.api_key,
+                "anthropic-version": self.anthropic_version,
+                "content-type": "application/json",
+            }
         raw_message = await _post_json_async(url, headers, payload, self.timeout)
 
         content_blocks = raw_message.get("content") or []
