@@ -19,6 +19,28 @@ class ModelAdapter(ABC):
         raise NotImplementedError
 
 
+class FakeAdapter(ModelAdapter):
+    def __init__(self, answers: dict[int, list[str]] | None = None):
+        self.answers = answers or {}
+        self.indexes: dict[int, int] = {}
+
+    async def generate(self, messages: list[dict[str, Any]], turn: int) -> Generation:
+        problem_id = int(messages[1].get("problem_id", 0))
+        values = self.answers.get(problem_id, [""])
+        index = self.indexes.get(problem_id, 0)
+        self.indexes[problem_id] = index + 1
+        answer = values[min(index, len(values) - 1)]
+        return Generation(
+            answer=answer,
+            message={
+                "role": "assistant",
+                "content": f"提交答案：{answer}",
+                "reasoning": None,
+                "tool_calls": [guess_tool_call(turn, answer)],
+            },
+        )
+
+
 def _normalize_tool_calls(tool_calls: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
     if not tool_calls:
         return []
@@ -84,7 +106,7 @@ def build_prompt(problem: Any) -> str:
 
 def build_system_prompt() -> str:
     return (
-        "你是 CHARM benchmark 的答题 agent。任务是根据两张图片、第一张图提示词、"
+        "你是 CHARM benchmark 的 ReAct 答题 agent。任务是根据两张图片、第一张图提示词、"
         "答案类别和字数，推理中文谐音梗答案。你可以先分析图片中的物体、动作、数量、拆分关系和谐音关系。"
         "当你准备尝试答案时，必须调用 submit_answer 工具提交。"
         "submit_answer 的 answer 只能包含最终答案"
@@ -258,7 +280,9 @@ def _convert_messages_for_anthropic(
 
         content_blocks: list[dict[str, Any]] = []
         content = message.get("content")
-        if isinstance(content, list):
+        if role == "assistant" and message.get("_google_parts") is not None:
+            parts = message["_google_parts"]
+        elif isinstance(content, list):
             for item in content:
                 item_type = item.get("type")
                 if item_type == "text":
@@ -279,7 +303,7 @@ def _convert_messages_for_anthropic(
         elif isinstance(content, str):
             content_blocks.append({"type": "text", "text": content})
 
-        if role == "assistant":
+        if role == "assistant" and message.get("_google_parts") is None:
             tool_calls = message.get("tool_calls") or []
             for tool_call in tool_calls:
                 function = tool_call.get("function", {})
@@ -326,7 +350,9 @@ def _convert_messages_for_google(
 
         parts: list[Any] = []
         content = message.get("content")
-        if isinstance(content, list):
+        if role == "assistant" and message.get("_google_parts") is not None:
+            parts = message["_google_parts"]
+        elif isinstance(content, list):
             for item in content:
                 item_type = item.get("type")
                 if item_type == "text":
@@ -343,7 +369,7 @@ def _convert_messages_for_google(
         elif isinstance(content, str):
             parts.append(types.Part.from_text(text=content))
 
-        if role == "assistant":
+        if role == "assistant" and message.get("_google_parts") is None:
             tool_calls = message.get("tool_calls") or []
             for tool_call in tool_calls:
                 function = tool_call.get("function", {})
@@ -407,6 +433,7 @@ def _summarize_google_response(response: Any) -> dict[str, Any]:
             {
                 "finish_reason": getattr(cand, "finish_reason", None),
                 "safety_ratings": getattr(cand, "safety_ratings", None),
+                "parts": [_google_part_to_json(part) for part in parts],
                 "parts_text": [getattr(part, "text", None) for part in parts],
                 "function_calls": function_calls,
             }
@@ -425,6 +452,50 @@ def _summarize_google_response(response: Any) -> dict[str, Any]:
         "function_calls": response_function_calls,
         "candidates": candidates_summary,
     }
+
+
+def _google_part_to_json(part: Any) -> dict[str, Any]:
+    function_call = getattr(part, "function_call", None)
+    function_response = getattr(part, "function_response", None)
+    payload: dict[str, Any] = {
+        "text": getattr(part, "text", None),
+        "thought": getattr(part, "thought", None),
+        "has_thought_signature": bool(getattr(part, "thought_signature", None)),
+    }
+    if function_call:
+        payload["function_call"] = {
+            "name": getattr(function_call, "name", None),
+            "args": getattr(function_call, "args", None),
+            "id": getattr(function_call, "id", None),
+        }
+    if function_response:
+        payload["function_response"] = {
+            "name": getattr(function_response, "name", None),
+            "id": getattr(function_response, "id", None),
+            "response": getattr(function_response, "response", None),
+        }
+    return payload
+
+
+def _extract_google_reasoning(response: Any) -> str | None:
+    thoughts: list[str] = []
+    candidates = getattr(response, "candidates", []) or []
+    for cand in candidates:
+        content = getattr(cand, "content", None)
+        parts = getattr(content, "parts", None) or []
+        for part in parts:
+            if getattr(part, "thought", None) and getattr(part, "text", None):
+                thoughts.append(part.text)
+    joined = "".join(thoughts).strip()
+    return joined or None
+
+
+def _extract_google_parts(response: Any) -> list[Any]:
+    candidates = getattr(response, "candidates", []) or []
+    if not candidates:
+        return []
+    content = getattr(candidates[0], "content", None)
+    return list(getattr(content, "parts", None) or [])
 
 
 def _extract_google_text(response: Any) -> str:
@@ -617,6 +688,7 @@ class GoogleGenAIAdapter(ModelAdapter):
             system_instruction=system_prompt,
             tools=tools,
             tool_config=tool_config,
+            thinking_config=types.ThinkingConfig(include_thoughts=True),
         )
 
         def _call() -> Any:
@@ -628,6 +700,8 @@ class GoogleGenAIAdapter(ModelAdapter):
 
         response = await asyncio.to_thread(_call)
         text = _extract_google_text(response)
+        reasoning = _extract_google_reasoning(response)
+        google_parts = _extract_google_parts(response)
         function_calls = getattr(response, "function_calls", None)
         summary = _summarize_google_response(response)
         if function_calls:
@@ -641,7 +715,8 @@ class GoogleGenAIAdapter(ModelAdapter):
                 message={
                     "role": "assistant",
                     "content": text,
-                    "reasoning": None,
+                    "reasoning": reasoning,
+                    "_google_parts": google_parts,
                     "tool_calls": [
                         {
                             "id": f"submit_answer_{turn}",
@@ -664,7 +739,8 @@ class GoogleGenAIAdapter(ModelAdapter):
             message={
                 "role": "assistant",
                 "content": text,
-                "reasoning": None,
+                "reasoning": reasoning,
+                "_google_parts": google_parts,
                 "tool_calls": [guess_tool_call(turn, answer)],
                 "raw_message": summary,
             },

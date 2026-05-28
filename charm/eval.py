@@ -36,6 +36,15 @@ def _feedback_from_json(payload: dict) -> Feedback:
     )
 
 
+
+
+def _json_safe_message(message: dict) -> dict:
+    return {key: value for key, value in message.items() if not key.startswith("_google_")}
+
+
+def _json_safe_messages(messages: list[dict]) -> list[dict]:
+    return [_json_safe_message(message) for message in messages]
+
 def _build_record(
     problem: Problem,
     success: bool,
@@ -57,7 +66,7 @@ def _build_record(
         "category": problem.category,
         "turns": [item.to_json() for item in history],
         "tools": tools,
-        "messages": messages,
+        "messages": _json_safe_messages(messages),
     }
 
 
@@ -130,7 +139,7 @@ async def run_problem(
         attempts = 0
         if checkpoint_path:
             for message in messages:
-                _write_checkpoint(checkpoint_path, message)
+                _write_checkpoint(checkpoint_path, _json_safe_message(message))
 
     if history and history[-1].correct:
         record = _build_record(
@@ -150,7 +159,7 @@ async def run_problem(
         generation = await adapter.generate(messages, attempts)
         messages.append(generation.message)
         if checkpoint_path:
-            _write_checkpoint(checkpoint_path, generation.message)
+            _write_checkpoint(checkpoint_path, _json_safe_message(generation.message))
         feedback = env.submit(generation.answer)
         history.append(feedback)
         tool_call = generation.message["tool_calls"][0]
