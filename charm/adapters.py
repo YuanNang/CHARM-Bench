@@ -321,6 +321,8 @@ def _convert_messages_for_anthropic(
                         "input": args,
                     }
                 )
+        if role == "assistant" and not content_blocks:
+            continue
         converted.append(
             {
                 "role": "assistant" if role == "assistant" else "user",
@@ -571,6 +573,7 @@ class OpenAICompatibleAdapter(ModelAdapter):
         raw_message = message.model_dump(mode="json") if hasattr(message, "model_dump") else {}
         answer = extract_answer(raw_message, fallback=(message.content or "").strip())
         reasoning_content = getattr(message, "reasoning_content", None)
+        tool_calls = raw_message.get("tool_calls") or []
         return Generation(
             answer=answer,
             reasoning=reasoning_content,
@@ -578,7 +581,7 @@ class OpenAICompatibleAdapter(ModelAdapter):
                 "role": "assistant",
                 "content": message.content or "",
                 "reasoning": reasoning_content,
-                "tool_calls": raw_message.get("tool_calls") or [guess_tool_call(turn, answer)],
+                "tool_calls": tool_calls,
                 "raw_message": raw_message,
             },
         )
@@ -653,7 +656,7 @@ class AnthropicAdapter(ModelAdapter):
                 "role": "assistant",
                 "content": content,
                 "reasoning": None,
-                "tool_calls": tool_calls or [guess_tool_call(turn, answer)],
+                "tool_calls": tool_calls,
                 "raw_message": raw_message,
             },
         )
@@ -752,7 +755,7 @@ class GoogleGenAIAdapter(ModelAdapter):
                 "content": text,
                 "reasoning": reasoning,
                 "_google_parts": google_parts,
-                "tool_calls": [guess_tool_call(turn, answer)],
+                "tool_calls": [],
                 "raw_message": summary,
             },
         )

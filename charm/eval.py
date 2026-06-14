@@ -160,13 +160,22 @@ async def run_problem(
         messages.append(generation.message)
         if checkpoint_path:
             _write_checkpoint(checkpoint_path, _json_safe_message(generation.message))
-        feedback = env.submit(generation.answer)
-        history.append(feedback)
-        tool_call = generation.message["tool_calls"][0]
-        tool_msg = tool_message(tool_call["id"], feedback.to_json())
-        messages.append(tool_msg)
-        if checkpoint_path:
-            _write_checkpoint(checkpoint_path, tool_msg)
+        tool_calls = generation.message.get("tool_calls") or []
+        if tool_calls:
+            feedback = env.submit(generation.answer)
+            history.append(feedback)
+            tool_call = tool_calls[0]
+            tool_msg = tool_message(tool_call["id"], feedback.to_json())
+            messages.append(tool_msg)
+            if checkpoint_path:
+                _write_checkpoint(checkpoint_path, tool_msg)
+        else:
+            feedback = Feedback(
+                correct=False,
+                guess=generation.answer,
+                message="missing_tool_call",
+            )
+            history.append(feedback)
         duration_seconds = elapsed_seconds + (time.perf_counter() - start)
         record = _build_record(
             problem,

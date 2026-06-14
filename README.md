@@ -157,6 +157,7 @@ Here are the baseline results evaluated on `charm-bench-100.jsonl`:
 | --- | --- | --- | --- |
 | gemini-3.5-flash | google | 1 | 72 |
 | SenseNova-6.7-Flash-Lite | openai | 1 | 33 |
+| LongCat-2.0-Preview | openai | 1 | 10 |
 
 *We welcome contributions to update this table with results from other models!*
 
