@@ -21,6 +21,40 @@ We thank the game creators for the inspiration and the data source.
 If you need training data or commercial use permission, please contact the studio:
 https://www.findthelamp.com/
 
+## Example
+
+### Puzzle Example: Chinese Homophonic Pun 中文谐音梗示例
+
+Below is an example puzzle from CHARM demonstrating how the game works.
+
+**Hint:** 这是金子 (This is gold / This is money)  
+**Category:** 成语 (Idiom)  
+**Answer Length:** 4 characters  
+**Answer:** 半斤八两 (Half a catty and eight taels)
+
+#### Images:
+
+<div style="display: flex; gap: 30px; justify-content: center; align-items: center;">
+  <div style="text-align: center;">
+    <strong>Image 1</strong><br>
+    <img src="data/refer/refer-1.png" width="240" alt="refer-1">
+  </div>
+  <div style="text-align: center;">
+    <strong>Image 2</strong><br>
+    <img src="data/refer/refer-2.png" width="240" alt="refer-2">
+  </div>
+</div>
+
+#### Solution Explanation:
+
+**Chinese 中文:**
+
+第一张图显示"金子"（黄金/金币），提示词"金"与"斤"谐音。第二张图中，金元宝被切开为两部分，分别出现数字"8"，视觉上提示"半"（一半）和"两"（8的象征）。综合谐音推理，"金"→"斤"，配合图像中的"半"和"两个8"，可推断出成语答案"半斤八两"，意为能力或分量相当，不相上下。
+
+**English:**
+
+Image 1 shows gold coins or treasure, with the hint word "金" (gold) providing the homophonic clue. Image 2 depicts a gold ingot being split in two, with the number "8" appearing on each half, visually suggesting "半" (half) and "两" (two/eight). Through homophonic reasoning, "金" (gold/jin) sounds like "斤" (catty/jin), which combined with the visual cues of "half" and "two 8s" leads to the answer "半斤八两" (half a catty and eight taels). This idiom means two people or things are equally matched in ability or significance.
+
 ## License
 
 - Code: MIT License (see LICENSE)
